@@ -7,3 +7,5 @@
 .env.test.local
 .env.production.local
 .cursorrules
+
+coverage.out
