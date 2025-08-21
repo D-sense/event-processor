@@ -9,6 +9,7 @@ import (
 
 	"github.com/d-sense/event-processor/internal/persistence"
 	"github.com/d-sense/event-processor/internal/validator"
+	"github.com/d-sense/event-processor/pkg/logger"
 	"github.com/d-sense/event-processor/pkg/models"
 )
 
@@ -40,7 +41,8 @@ func (p *EventProcessor) ProcessEvent(ctx context.Context, eventData interface{}
 	// Generate correlation ID for tracing
 	correlationID := fmt.Sprintf("proc_%d", time.Now().UnixNano())
 
-	logger := p.logger.WithFields(logrus.Fields{
+	// Create logger with all context fields using utility methods
+	logger := logger.WithFields(p.logger, map[string]interface{}{
 		"correlation_id": correlationID,
 		"component":      "event_processor",
 	})
@@ -54,11 +56,10 @@ func (p *EventProcessor) ProcessEvent(ctx context.Context, eventData interface{}
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	logger = logger.WithFields(logrus.Fields{
-		"event_id":   event.EventID,
-		"event_type": event.EventType,
-		"client_id":  event.ClientID,
-	})
+	// Add event context using standard logrus methods
+	logger = logger.WithField("event_id", event.EventID)
+	logger = logger.WithField("event_type", string(event.EventType))
+	logger = logger.WithField("client_id", event.ClientID)
 
 	logger.Info("Event validated successfully")
 
@@ -76,10 +77,9 @@ func (p *EventProcessor) ProcessEvent(ctx context.Context, eventData interface{}
 	}
 
 	processingTime := time.Since(startTime)
-	logger.WithFields(logrus.Fields{
-		"processing_time_ms": processingTime.Milliseconds(),
-		"status":             processedEvent.Status,
-	}).Info("Event processed successfully")
+	logger.WithField("processing_time_ms", processingTime.Milliseconds())
+	logger.WithField("status", string(processedEvent.Status))
+	logger.Info("Event processed successfully")
 
 	return nil
 }

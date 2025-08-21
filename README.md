@@ -63,6 +63,7 @@ sleep 30
 - **Graceful Shutdown**: Proper cleanup and resource management
 - **Auto-Infrastructure**: Automatic creation of required AWS resources on startup
 - **Security**: Client permission validation prevents unauthorized event processing
+- **Centralized Logging**: Unified logging configuration with log level control
 
 ### Technology Stack
 
@@ -169,6 +170,39 @@ curl http://localhost:4566/_localstack/health
 # Full system test
 ../scripts/test-system.sh
 ```
+
+### Step 4: Logging Configuration
+
+#### Log Level Control
+The system supports configurable log levels via the `LOG_LEVEL` environment variable:
+
+```bash
+# Set log level in docker-compose.yml
+environment:
+  - LOG_LEVEL=debug  # Options: debug, info, warn, error, fatal, panic
+
+# Or override at runtime
+docker-compose up -e LOG_LEVEL=debug
+```
+
+#### Available Log Levels
+- **debug**: Detailed debug information
+- **info**: General information (default)
+- **warn**: Warning messages
+- **error**: Error messages
+- **fatal**: Fatal errors (terminates service)
+- **panic**: Panic errors (terminates service)
+
+#### Structured Logging
+All logs are in JSON format with consistent fields:
+- `timestamp`: ISO 8601 timestamp
+- `level`: Log level
+- `message`: Log message
+- `service`: Service name
+- `version`: Service version
+- `component`: Component name (when applicable)
+- `correlation_id`: Request correlation ID
+- `event_id`, `event_type`, `client_id`: Event context
 
 ---
 

@@ -7,6 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/d-sense/event-processor/internal/persistence"
+	"github.com/d-sense/event-processor/pkg/logger"
 )
 
 // HealthStatus represents the health status of the service
@@ -60,12 +61,13 @@ func (h *HealthChecker) Check(ctx context.Context) *HealthStatus {
 	}
 
 	// Log health check results
-	h.logger.WithFields(logrus.Fields{
+	healthLogger := logger.WithFields(h.logger, map[string]interface{}{
 		"healthy":     status.Healthy,
 		"db_healthy":  dbHealth.Healthy,
 		"db_latency":  dbHealth.Latency,
 		"mem_healthy": memHealth.Healthy,
-	}).Debug("Health check completed")
+	})
+	healthLogger.Debug("Health check completed")
 
 	return status
 }

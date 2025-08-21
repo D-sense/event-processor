@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/d-sense/event-processor/pkg/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -63,7 +64,11 @@ func (i *InfrastructureManager) SetupInfrastructure(ctx context.Context) error {
 	if err != nil {
 		i.logger.WithError(err).Warn("Failed to get queue URLs, continuing...")
 	} else {
-		i.logger.WithField("queue_urls", queueURLs).Info("Successfully retrieved queue URLs")
+		// Create logger with queue context
+		queueLogger := logger.WithFields(i.logger, map[string]interface{}{
+			"queue_urls": queueURLs,
+		})
+		queueLogger.Info("Successfully retrieved queue URLs")
 	}
 
 	i.logger.Info("Infrastructure setup completed successfully!")

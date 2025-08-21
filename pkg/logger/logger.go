@@ -70,3 +70,37 @@ func WithEventContext(logger *logrus.Logger, eventID, eventType, clientID string
 		"client_id":  clientID,
 	})
 }
+
+// WithRequestContext adds HTTP request context to logger
+func WithRequestContext(logger *logrus.Logger, method, path, userAgent string) *logrus.Entry {
+	return logger.WithFields(logrus.Fields{
+		"http_method": method,
+		"http_path":   path,
+		"user_agent":  userAgent,
+	})
+}
+
+// WithError adds error context to logger
+func WithError(logger *logrus.Logger, err error) *logrus.Entry {
+	return logger.WithField("error", err.Error())
+}
+
+// WithFields adds multiple fields to logger context
+func WithFields(logger *logrus.Logger, fields map[string]interface{}) *logrus.Entry {
+	return logger.WithFields(logrus.Fields(fields))
+}
+
+// WithDuration adds duration field to logger context
+func WithDuration(logger *logrus.Logger, duration string) *logrus.Entry {
+	return logger.WithField("duration", duration)
+}
+
+// WithCount adds count field to logger context
+func WithCount(logger *logrus.Logger, count int) *logrus.Entry {
+	return logger.WithField("count", count)
+}
+
+// WithStatus adds status field to logger context
+func WithStatus(logger *logrus.Logger, status string) *logrus.Entry {
+	return logger.WithField("status", status)
+}

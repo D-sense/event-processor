@@ -9,8 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sirupsen/logrus"
-
 	"github.com/d-sense/event-processor/internal/config"
 	"github.com/d-sense/event-processor/internal/consumer"
 	"github.com/d-sense/event-processor/internal/health"
@@ -18,16 +16,15 @@ import (
 	"github.com/d-sense/event-processor/internal/processor"
 	"github.com/d-sense/event-processor/internal/validator"
 	"github.com/d-sense/event-processor/pkg/aws"
+	"github.com/d-sense/event-processor/pkg/logger"
 )
 
 func main() {
 	// Load configuration
 	cfg := config.Load()
 
-	// Setup logging
-	log := logrus.New()
-	log.SetLevel(logrus.InfoLevel)
-	log.SetFormatter(&logrus.JSONFormatter{})
+	// Setup logging using centralized logger package
+	log := logger.New(cfg.LogLevel)
 
 	// Create AWS config
 	awsCfg, err := aws.NewSession(cfg)

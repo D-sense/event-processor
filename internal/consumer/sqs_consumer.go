@@ -13,6 +13,7 @@ import (
 
 	"github.com/d-sense/event-processor/internal/config"
 	"github.com/d-sense/event-processor/internal/processor"
+	"github.com/d-sense/event-processor/pkg/logger"
 )
 
 // SQSConsumer handles consuming messages from AWS SQS
@@ -128,18 +129,17 @@ func (c *SQSConsumer) processMessage(ctx context.Context, message *types.Message
 	messageID := aws.ToString(message.MessageId)
 	receiptHandle := aws.ToString(message.ReceiptHandle)
 
-	c.logger.WithFields(logrus.Fields{
+	// Create logger with message context
+	logger := logger.WithFields(c.logger, map[string]interface{}{
 		"message_id":     messageID,
 		"receipt_handle": receiptHandle,
-	}).Debug("Processing message")
+	})
+	logger.Debug("Processing message")
 
 	// Check retry count
 	retryCount := c.getRetryCount(message)
 	if retryCount >= c.maxRetries {
-		c.logger.WithFields(logrus.Fields{
-			"message_id":  messageID,
-			"retry_count": retryCount,
-		}).Warn("Message exceeded max retries, sending to DLQ")
+		logger.WithField("retry_count", retryCount).Warn("Message exceeded max retries, sending to DLQ")
 		c.sendToDLQ(ctx, message, "Max retries exceeded")
 		c.deleteMessage(ctx, message)
 		return
@@ -147,10 +147,7 @@ func (c *SQSConsumer) processMessage(ctx context.Context, message *types.Message
 
 	// Process the message
 	if err := c.processor.ProcessEvent(context.Background(), message); err != nil {
-		c.logger.WithFields(logrus.Fields{
-			"message_id": messageID,
-			"error":      err,
-		}).Error("Failed to process event")
+		logger.WithError(err).Error("Failed to process event")
 
 		// Increment retry count and requeue if under max retries
 		if retryCount < c.maxRetries {
@@ -162,7 +159,7 @@ func (c *SQSConsumer) processMessage(ctx context.Context, message *types.Message
 	}
 
 	// Successfully processed, delete the message
-	c.logger.WithField("message_id", messageID).Info("Successfully processed message")
+	logger.Info("Successfully processed message")
 	c.deleteMessage(ctx, message)
 }
 
@@ -213,10 +210,12 @@ func (c *SQSConsumer) requeueMessage(ctx context.Context, message *types.Message
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to requeue message")
 	} else {
-		c.logger.WithFields(logrus.Fields{
+		// Create logger with requeue context
+		requeueLogger := logger.WithFields(c.logger, map[string]interface{}{
 			"message_id":  aws.ToString(message.MessageId),
 			"retry_count": newRetryCount,
-		}).Info("Message requeued")
+		})
+		requeueLogger.Info("Message requeued")
 	}
 }
 

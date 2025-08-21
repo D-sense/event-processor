@@ -33,6 +33,7 @@ services:
       - DYNAMODB_TABLE_NAME=events
       - SERVICE_PORT=8080
       - SCHEMA_PATH=/app/schemas/event-schema.json
+      - LOG_LEVEL=info
     depends_on:
       localstack:
         condition: service_healthy
