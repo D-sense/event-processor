@@ -2,8 +2,6 @@ package models
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // EventType represents the type of event
@@ -23,7 +21,6 @@ const (
 	EventStatusPending   EventStatus = "pending"
 	EventStatusProcessed EventStatus = "processed"
 	EventStatusFailed    EventStatus = "failed"
-	EventStatusRetry     EventStatus = "retry"
 )
 
 // Event represents the core event structure
@@ -46,26 +43,17 @@ type ProcessedEvent struct {
 	TTL         int64       `json:"ttl" dynamodb:"ttl"`
 }
 
-// NewEvent creates a new event with generated ID and timestamp
-func NewEvent(eventType EventType, clientID string, payload map[string]interface{}, version string) *Event {
-	return &Event{
-		EventID:   uuid.New().String(),
-		EventType: eventType,
-		ClientID:  clientID,
-		Timestamp: time.Now().UTC(),
-		Payload:   payload,
-		Version:   version,
-	}
-}
-
 // ToProcessedEvent converts an Event to ProcessedEvent
 func (e *Event) ToProcessedEvent() *ProcessedEvent {
+	// CWe should calculate TTL: 30 days from now
+	ttl := time.Now().Add(30 * 24 * time.Hour).Unix()
+
 	return &ProcessedEvent{
 		Event:       *e,
 		ProcessedAt: time.Now().UTC(),
 		Status:      EventStatusPending,
 		RetryCount:  0,
-		TTL:         time.Now().Add(30 * 24 * time.Hour).Unix(), // 30 days TTL
+		TTL:         ttl,
 	}
 }
 
@@ -79,24 +67,10 @@ func IsValidEventType(eventType string) bool {
 	}
 }
 
-// EventMetrics represents metrics for event processing
-type EventMetrics struct {
-	TotalProcessed   int64 `json:"totalProcessed"`
-	TotalFailed      int64 `json:"totalFailed"`
-	ProcessingRate   int64 `json:"processingRate"`
-	AverageLatencyMs int64 `json:"averageLatencyMs"`
-}
-
 // ClientConfig represents per-client configuration
 type ClientConfig struct {
 	ClientID     string            `json:"clientId" dynamodb:"client_id"`
 	AllowedTypes []EventType       `json:"allowedTypes" dynamodb:"allowed_types"`
 	Config       map[string]string `json:"config" dynamodb:"config"`
 	Active       bool              `json:"active" dynamodb:"active"`
-}
-
-// ValidationResult represents the result of event validation
-type ValidationResult struct {
-	Valid  bool     `json:"valid"`
-	Errors []string `json:"errors,omitempty"`
 }

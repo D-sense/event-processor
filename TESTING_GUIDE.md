@@ -322,10 +322,5 @@ docker-compose down --rmi all
 ✅ **Error Handling**: Retry logic with exponential backoff
 ✅ **Observability**: Structured logging with correlation IDs
 
-### Performance Benchmarks
 
-- **Event Production**: 5 events/second (configurable)
-- **Event Processing**: Should handle production rate without backlog
-- **Latency**: Health check responds < 100ms
-- **Error Rate**: < 5% due to known DynamoDB schema issue
 

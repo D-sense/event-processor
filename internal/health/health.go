@@ -111,9 +111,3 @@ func (h *HealthChecker) checkMemory() ComponentHealth {
 		Latency: latency,
 	}
 }
-
-// IsHealthy returns a simple boolean health status
-func (h *HealthChecker) IsHealthy(ctx context.Context) bool {
-	status := h.Check(ctx)
-	return status.Healthy
-}

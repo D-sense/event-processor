@@ -12,6 +12,11 @@ import (
 	"github.com/d-sense/event-processor/pkg/models"
 )
 
+// Processor defines the contract for event processing
+type Processor interface {
+	ProcessEvent(ctx context.Context, eventData interface{}) error
+}
+
 // EventProcessor handles the core event processing logic
 type EventProcessor struct {
 	repository persistence.Repository
@@ -60,13 +65,13 @@ func (p *EventProcessor) ProcessEvent(ctx context.Context, eventData interface{}
 	// Step 2: Perform event triage
 	processedEvent, err := p.triageEvent(ctx, event, logger)
 	if err != nil {
-		logger.WithError(err).Error("Event triage failed")
+		logger.WithField("event", event).WithError(err).Error("Event triage failed")
 		return fmt.Errorf("triage failed: %w", err)
 	}
 
 	// Step 3: Persist the event
 	if err := p.repository.SaveEvent(ctx, processedEvent); err != nil {
-		logger.WithError(err).Error("Failed to persist event")
+		logger.WithField("processed_event", processedEvent).WithError(err).Error("Failed to persist event")
 		return fmt.Errorf("persistence failed: %w", err)
 	}
 
@@ -110,8 +115,8 @@ func (p *EventProcessor) triageEvent(ctx context.Context, event *models.Event, l
 	// Validate client permissions
 	if err := p.validateClientPermissions(ctx, event.ClientID, event.EventType, logger); err != nil {
 		logger.WithError(err).Warn("Client permission validation failed")
-		processedEvent.Status = models.EventStatusFailed
-		processedEvent.ErrorMsg = fmt.Sprintf("client permission error: %v", err)
+		// Return error to reject the event instead of storing it
+		return nil, fmt.Errorf("client permission validation failed: %w", err)
 	}
 
 	// Set final status if not already set
@@ -252,16 +257,4 @@ func (p *EventProcessor) validateClientPermissions(ctx context.Context, clientID
 	}
 
 	return nil
-}
-
-// GetMetrics returns processing metrics
-func (p *EventProcessor) GetMetrics() (*models.EventMetrics, error) {
-	// This would typically aggregate metrics from the repository
-	// For now, we return basic metrics
-	return &models.EventMetrics{
-		TotalProcessed:   0, // Would be fetched from repository
-		TotalFailed:      0,
-		ProcessingRate:   0,
-		AverageLatencyMs: 0,
-	}, nil
 }

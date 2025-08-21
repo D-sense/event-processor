@@ -2,253 +2,253 @@ package consumer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"sync"
+	"strconv"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/sirupsen/logrus"
 
 	"github.com/d-sense/event-processor/internal/config"
 	"github.com/d-sense/event-processor/internal/processor"
 )
 
-const (
-	eventProcessorMaxRetries = 3 // Maximum retries for processing an event
-)
-
 // SQSConsumer handles consuming messages from AWS SQS
 type SQSConsumer struct {
-	sqsClient   *sqs.SQS
-	queueURL    string
-	dlqURL      string
-	processor   *processor.EventProcessor
-	config      *config.Config
-	logger      *logrus.Logger
-	workerPool  chan struct{}
-	maxMessages int64
-	waitTime    int64
+	sqsClient  *sqs.Client
+	queueURL   string
+	dlqURL     string
+	processor  processor.Processor
+	logger     *logrus.Logger
+	stopChan   chan struct{}
+	isRunning  bool
+	maxRetries int
+	waitTime   int64
+	batchSize  int64
 }
 
 // NewSQSConsumer creates a new SQS consumer
-func NewSQSConsumer(sess *session.Session, cfg *config.Config, proc *processor.EventProcessor, logger *logrus.Logger) *SQSConsumer {
-	sqsClient := sqs.New(sess, &aws.Config{
-		Endpoint: aws.String(cfg.DynamoDBEndpoint), // Use same endpoint for SQS in LocalStack
+func NewSQSConsumer(awsCfg aws.Config, cfg *config.Config, processor processor.Processor, logger *logrus.Logger) *SQSConsumer {
+	// Create SQS client with proper LocalStack 3.x configuration
+	sqsClient := sqs.NewFromConfig(awsCfg, func(o *sqs.Options) {
+		o.BaseEndpoint = aws.String(cfg.AWSEndpointURL)
 	})
 
 	return &SQSConsumer{
-		sqsClient:   sqsClient,
-		queueURL:    cfg.SQSQueueURL,
-		dlqURL:      cfg.SQSDLQUrl,
-		processor:   proc,
-		config:      cfg,
-		logger:      logger,
-		workerPool:  make(chan struct{}, cfg.WorkerPoolSize),
-		maxMessages: cfg.SQSMaxMessages,
-		waitTime:    cfg.SQSWaitTimeSeconds,
+		sqsClient:  sqsClient,
+		queueURL:   cfg.SQSQueueURL,
+		dlqURL:     cfg.SQSDLQUrl,
+		processor:  processor,
+		logger:     logger,
+		stopChan:   make(chan struct{}),
+		maxRetries: 3,  // Default max retries
+		waitTime:   20, // Long polling
+		batchSize:  10,
 	}
 }
 
-// Start begins consuming messages from the queue
+// Start begins consuming messages from SQS
 func (c *SQSConsumer) Start(ctx context.Context) error {
+	if c.isRunning {
+		return fmt.Errorf("consumer is already running")
+	}
+
+	c.isRunning = true
 	c.logger.Info("Starting SQS consumer")
 
-	for {
-		select {
-		case <-ctx.Done():
-			c.logger.Info("SQS consumer context cancelled")
-			return nil
-		default:
-			if err := c.pollMessages(ctx); err != nil {
-				c.logger.WithError(err).Error("Error polling messages")
-				time.Sleep(5 * time.Second) // Wait before retrying
-			}
-		}
-	}
-}
+	go c.consumeMessages(ctx)
 
-// pollMessages polls for messages from SQS
-func (c *SQSConsumer) pollMessages(ctx context.Context) error {
-	input := &sqs.ReceiveMessageInput{
-		QueueUrl:            aws.String(c.queueURL),
-		MaxNumberOfMessages: aws.Int64(c.maxMessages),
-		WaitTimeSeconds:     aws.Int64(c.waitTime),
-		MessageAttributeNames: []*string{
-			aws.String(sqs.QueueAttributeNameAll),
-		},
-	}
-
-	result, err := c.sqsClient.ReceiveMessageWithContext(ctx, input)
-	if err != nil {
-		return fmt.Errorf("failed to receive messages: %w", err)
-	}
-
-	if len(result.Messages) == 0 {
-		c.logger.Debug("No messages received")
-		return nil
-	}
-
-	c.logger.WithField("count", len(result.Messages)).Debug("Received messages")
-
-	// We process the messages concurrently
-	var wg sync.WaitGroup
-	for _, message := range result.Messages {
-		select {
-		case c.workerPool <- struct{}{}: // Acquire worker
-			wg.Add(1)
-			go func(msg *sqs.Message) {
-				defer func() {
-					<-c.workerPool // Release worker
-					wg.Done()
-				}()
-				c.processMessage(ctx, msg)
-			}(message)
-		case <-ctx.Done():
-			c.logger.Info("Context cancelled while processing messages")
-			return nil
-		}
-	}
-
-	wg.Wait()
 	return nil
 }
 
-// processMessage processes a single SQS message
-func (c *SQSConsumer) processMessage(ctx context.Context, message *sqs.Message) {
-	messageID := aws.StringValue(message.MessageId)
-	receiptHandle := aws.StringValue(message.ReceiptHandle)
+// Stop gracefully stops the consumer
+func (c *SQSConsumer) Stop(ctx context.Context) error {
+	if !c.isRunning {
+		return nil
+	}
 
-	logger := c.logger.WithFields(logrus.Fields{
-		"message_id":     messageID,
-		"receipt_handle": receiptHandle,
-	})
+	c.logger.Info("Stopping SQS consumer")
+	c.isRunning = false
+	close(c.stopChan)
 
-	logger.Debug("Processing message")
+	// Wait for context cancellation or timeout
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("timeout waiting for consumer to stop")
+	}
+}
 
-	// Parse message body
-	var eventData interface{}
-	if err := json.Unmarshal([]byte(aws.StringValue(message.Body)), &eventData); err != nil {
-		logger.WithError(err).Error("Failed to unmarshal message body")
-		c.sendToDLQ(ctx, message, fmt.Sprintf("JSON unmarshal error: %v", err))
-		c.deleteMessage(ctx, receiptHandle, logger)
+// consumeMessages continuously polls SQS for messages
+func (c *SQSConsumer) consumeMessages(ctx context.Context) {
+	for {
+		select {
+		case <-c.stopChan:
+			c.logger.Info("SQS consumer stopped")
+			return
+		default:
+			c.pollMessages(ctx)
+		}
+	}
+}
+
+// pollMessages retrieves and processes a batch of messages
+func (c *SQSConsumer) pollMessages(ctx context.Context) {
+	input := &sqs.ReceiveMessageInput{
+		QueueUrl:            aws.String(c.queueURL),
+		MaxNumberOfMessages: int32(c.batchSize),
+		WaitTimeSeconds:     int32(c.waitTime),
+		MessageAttributeNames: []string{
+			"All",
+		},
+	}
+
+	result, err := c.sqsClient.ReceiveMessage(ctx, input)
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to receive messages from SQS")
 		return
 	}
 
-	// Process the event
-	if err := c.processor.ProcessEvent(ctx, eventData); err != nil {
-		logger.WithError(err).Error("Failed to process event")
+	if len(result.Messages) == 0 {
+		return
+	}
 
-		// Check retry count from message attributes
-		retryCount := c.getRetryCount(message)
-		if retryCount >= eventProcessorMaxRetries { // Max retries
-			c.sendToDLQ(ctx, message, fmt.Sprintf("Max retries exceeded: %v", err))
-			c.deleteMessage(ctx, receiptHandle, logger)
+	c.logger.WithField("message_count", len(result.Messages)).Debug("Received messages from SQS")
+
+	for _, message := range result.Messages {
+		go c.processMessage(ctx, &message)
+	}
+}
+
+// processMessage processes a single SQS message
+func (c *SQSConsumer) processMessage(ctx context.Context, message *types.Message) {
+	messageID := aws.ToString(message.MessageId)
+	receiptHandle := aws.ToString(message.ReceiptHandle)
+
+	c.logger.WithFields(logrus.Fields{
+		"message_id":     messageID,
+		"receipt_handle": receiptHandle,
+	}).Debug("Processing message")
+
+	// Check retry count
+	retryCount := c.getRetryCount(message)
+	if retryCount >= c.maxRetries {
+		c.logger.WithFields(logrus.Fields{
+			"message_id":  messageID,
+			"retry_count": retryCount,
+		}).Warn("Message exceeded max retries, sending to DLQ")
+		c.sendToDLQ(ctx, message, "Max retries exceeded")
+		c.deleteMessage(ctx, message)
+		return
+	}
+
+	// Process the message
+	if err := c.processor.ProcessEvent(context.Background(), message); err != nil {
+		c.logger.WithFields(logrus.Fields{
+			"message_id": messageID,
+			"error":      err,
+		}).Error("Failed to process event")
+
+		// Increment retry count and requeue if under max retries
+		if retryCount < c.maxRetries {
+			c.requeueMessage(ctx, message, retryCount+1)
 		} else {
-			// Re-queue with increased retry count
-			c.requeueMessage(ctx, message, retryCount+1, err.Error())
-			c.deleteMessage(ctx, receiptHandle, logger)
+			c.sendToDLQ(ctx, message, fmt.Sprintf("Processing failed: %v", err))
 		}
 		return
 	}
 
-	// Successfully processed, delete from queue
-	c.deleteMessage(ctx, receiptHandle, logger)
-	logger.Info("Successfully processed and deleted message")
+	// Successfully processed, delete the message
+	c.logger.WithField("message_id", messageID).Info("Successfully processed message")
+	c.deleteMessage(ctx, message)
 }
 
-// deleteMessage deletes a message from the queue
-func (c *SQSConsumer) deleteMessage(ctx context.Context, receiptHandle string, logger *logrus.Entry) {
-	_, err := c.sqsClient.DeleteMessageWithContext(ctx, &sqs.DeleteMessageInput{
-		QueueUrl:      aws.String(c.queueURL),
-		ReceiptHandle: aws.String(receiptHandle),
-	})
-	if err != nil {
-		logger.WithError(err).Error("Failed to delete message")
-	}
-}
-
-// sendToDLQ sends a message to the dead letter queue
-func (c *SQSConsumer) sendToDLQ(ctx context.Context, originalMessage *sqs.Message, reason string) {
-	dlqMessage := map[string]interface{}{
-		"originalBody": aws.StringValue(originalMessage.Body),
-		"errorReason":  reason,
-		"timestamp":    time.Now().UTC(),
-		"messageId":    aws.StringValue(originalMessage.MessageId),
-	}
-
-	dlqBody, _ := json.Marshal(dlqMessage)
-
-	_, err := c.sqsClient.SendMessageWithContext(ctx, &sqs.SendMessageInput{
+// sendToDLQ sends a message to the Dead Letter Queue
+func (c *SQSConsumer) sendToDLQ(ctx context.Context, message *types.Message, reason string) {
+	input := &sqs.SendMessageInput{
 		QueueUrl:    aws.String(c.dlqURL),
-		MessageBody: aws.String(string(dlqBody)),
-		MessageAttributes: map[string]*sqs.MessageAttributeValue{
-			"ErrorReason": {
+		MessageBody: message.Body,
+		MessageAttributes: map[string]types.MessageAttributeValue{
+			"OriginalMessageId": {
+				DataType:    aws.String("String"),
+				StringValue: message.MessageId,
+			},
+			"FailureReason": {
 				DataType:    aws.String("String"),
 				StringValue: aws.String(reason),
 			},
 		},
-	})
+	}
 
+	_, err := c.sqsClient.SendMessage(ctx, input)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to send message to DLQ")
-	} else {
-		c.logger.WithField("reason", reason).Info("Sent message to DLQ")
 	}
 }
 
-// requeueMessage re-queues a message with retry count
-func (c *SQSConsumer) requeueMessage(ctx context.Context, message *sqs.Message, retryCount int, errorMsg string) {
-	delay := c.calculateDelay(retryCount)
+// requeueMessage puts a message back in the queue with incremented retry count
+func (c *SQSConsumer) requeueMessage(ctx context.Context, message *types.Message, newRetryCount int) {
+	// Update retry count in message attributes
+	if message.MessageAttributes == nil {
+		message.MessageAttributes = make(map[string]types.MessageAttributeValue)
+	}
 
-	_, err := c.sqsClient.SendMessageWithContext(ctx, &sqs.SendMessageInput{
-		QueueUrl:     aws.String(c.queueURL),
-		MessageBody:  message.Body,
-		DelaySeconds: aws.Int64(int64(delay.Seconds())),
-		MessageAttributes: map[string]*sqs.MessageAttributeValue{
-			"RetryCount": {
-				DataType:    aws.String("Number"),
-				StringValue: aws.String(fmt.Sprintf("%d", retryCount)),
-			},
-			"LastError": {
-				DataType:    aws.String("String"),
-				StringValue: aws.String(errorMsg),
-			},
-		},
-	})
+	message.MessageAttributes["RetryCount"] = types.MessageAttributeValue{
+		DataType:    aws.String("Number"),
+		StringValue: aws.String(strconv.Itoa(newRetryCount)),
+	}
 
+	// Send back to queue
+	input := &sqs.SendMessageInput{
+		QueueUrl:          aws.String(c.queueURL),
+		MessageBody:       message.Body,
+		MessageAttributes: message.MessageAttributes,
+		DelaySeconds:      int32(newRetryCount * 5), // Exponential backoff
+	}
+
+	_, err := c.sqsClient.SendMessage(ctx, input)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to requeue message")
 	} else {
 		c.logger.WithFields(logrus.Fields{
-			"retry_count": retryCount,
-			"delay":       delay,
-		}).Info("Requeued message with delay")
+			"message_id":  aws.ToString(message.MessageId),
+			"retry_count": newRetryCount,
+		}).Info("Message requeued")
 	}
 }
 
-// getRetryCount extracts retry count from message attributes
-func (c *SQSConsumer) getRetryCount(message *sqs.Message) int {
-	if attrs := message.MessageAttributes; attrs != nil {
-		if retryAttr := attrs["RetryCount"]; retryAttr != nil {
-			if retryCount := aws.StringValue(retryAttr.StringValue); retryCount != "" {
-				var count int
-				fmt.Sscanf(retryCount, "%d", &count)
-				return count
-			}
+// deleteMessage removes a processed message from the queue
+func (c *SQSConsumer) deleteMessage(ctx context.Context, message *types.Message) {
+	input := &sqs.DeleteMessageInput{
+		QueueUrl:      aws.String(c.queueURL),
+		ReceiptHandle: message.ReceiptHandle,
+	}
+
+	_, err := c.sqsClient.DeleteMessage(ctx, input)
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to delete message from queue")
+	}
+}
+
+// getRetryCount extracts the retry count from message attributes
+func (c *SQSConsumer) getRetryCount(message *types.Message) int {
+	if message.MessageAttributes == nil {
+		return 0
+	}
+
+	retryAttr, exists := message.MessageAttributes["RetryCount"]
+	if !exists {
+		return 0
+	}
+
+	if retryAttr.StringValue != nil {
+		if count, err := strconv.Atoi(*retryAttr.StringValue); err == nil {
+			return count
 		}
 	}
-	return 0
-}
 
-// calculateDelay calculates exponential backoff delay
-func (c *SQSConsumer) calculateDelay(retryCount int) time.Duration {
-	// Exponential backoff: 2^retryCount seconds, max 300 seconds (5 minutes)
-	delay := time.Duration(1<<retryCount) * time.Second
-	if delay > 300*time.Second {
-		delay = 300 * time.Second
-	}
-	return delay
+	return 0
 }

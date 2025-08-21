@@ -6,7 +6,7 @@ A high-performance, scalable event processing service built with Go, designed to
 
 **New to this project?** Follow these steps:
 
-1. **Prerequisites**: Docker 20.0+, Docker Compose 2.0+
+1. **Prerequisites**: Docker 20.0+, Docker Compose 2.0+, Go 1.23+
 2. **One-Command Setup**: `./scripts/setup.sh`
 3. **Quick Test**: `cd deployments && ../scripts/test-system.sh quick`
 
@@ -28,8 +28,12 @@ cd event-processor
 cd deployments
 docker-compose up -d
 
-# Wait for initialization (30-60 seconds)
-sleep 60
+# Wait for infrastructure setup (15-30 seconds)
+# The event-processor service will automatically create:
+# - DynamoDB tables (events, events-clients)
+# - SQS queues (event-queue, event-dlq)
+# - Sample client configurations
+sleep 30
 
 # Verify system
 ../scripts/test-system.sh quick
@@ -57,6 +61,8 @@ sleep 60
 - **Health Monitoring**: Comprehensive health checks and metrics
 - **Structured Logging**: Correlation IDs and structured log output
 - **Graceful Shutdown**: Proper cleanup and resource management
+- **Auto-Infrastructure**: Automatic creation of required AWS resources on startup
+- **Security**: Client permission validation prevents unauthorized event processing
 
 ### Technology Stack
 
@@ -64,8 +70,8 @@ sleep 60
 - **Containerization**: Docker + Docker Compose
 - **Message Queue**: AWS SQS
 - **Database**: AWS DynamoDB
-- **Local Development**: LocalStack
-- **Infrastructure**: Terraform (optional)
+- **Local Development**: LocalStack 3.1.0
+- **AWS SDK**: AWS SDK for Go v2
 
 ---
 
@@ -136,14 +142,15 @@ docker-compose logs -f
 
 #### Wait for Initialization
 ```bash
-# Wait for LocalStack to be ready (30-60 seconds)
-sleep 60
+# Wait for LocalStack to be ready (15-30 seconds)
+# The event-processor will automatically create infrastructure
+sleep 30
 
 # Check service status
 docker-compose ps
 ```
 
-### Step 4: Verification
+### Step 3: Verification
 
 #### Run Health Checks
 ```bash
@@ -190,18 +197,22 @@ docker-compose logs -f event-processor
 #### 3. Verify AWS Resources
 ```bash
 # Check queues
-awslocal sqs list-queues --endpoint-url=http://localhost:4566
+docker exec event-processor-localstack awslocal sqs list-queues
 
 # Check tables
-awslocal dynamodb list-tables --endpoint-url=http://localhost:4566
+docker exec event-processor-localstack awslocal dynamodb list-tables
+
+# Check event count
+docker exec event-processor-localstack awslocal dynamodb scan --table-name events --select COUNT
 ```
 
 ### Expected Results ✅
 
 - **3 containers running**: LocalStack, Event Processor, Event Producer
 - **Health check**: Returns `{"healthy": true}`
-- **Event flow**: Producer logs showing "Sent event X", Processor logs showing validation
+- **Event flow**: Producer logs showing "✅ Sent event X", Processor logs showing validation
 - **AWS resources**: 2 SQS queues, 2 DynamoDB tables
+- **Events processing**: Continuous event generation and processing
 
 ---
 
@@ -230,14 +241,18 @@ event-processor/
 │   │   ├── Dockerfile.processor
 │   │   └── Dockerfile.producer
 │   ├── docker-compose.yml
-│   ├── localstack/
 ├── schemas/
 │   └── event-schema.json
 ├── scripts/
 │   ├── setup-localstack.sh
 │   └── producer/
-├── tests/
+|   └── run-producer.sh
+|   └── test-simple.sh
+|   └── setup.sh
+|   └── test-system.sh
+├── TESTING_GUIDE.md
 └── README.md
+
 ```
 
 ---
@@ -253,6 +268,20 @@ event-processor/
 - **Integration Tests**: `../scripts/test-system.sh`
 - **Load Tests**: See `TESTING_GUIDE.md`
 
+### System Restart Test
+```bash
+# Test complete system restart
+docker-compose down
+docker-compose up -d
+
+# Wait for auto-infrastructure setup
+sleep 30
+
+# Verify all services are healthy
+docker-compose ps
+curl http://localhost:8080/health
+```
+
 ---
 
 ## 📚 Documentation
@@ -260,7 +289,6 @@ event-processor/
 | Document | Purpose | Audience |
 |----------|---------|----------|
 | [`TESTING_GUIDE.md`](TESTING_GUIDE.md) | Comprehensive testing scenarios | QA and testing teams |
-| [`deployments/terraform/README.md`](deployments/terraform/README.md) | Infrastructure documentation | DevOps engineers |
 | [`deployments/docker/README.md`](deployments/docker/README.md) | Docker configuration guide | All developers |
 
 ### Scripts
@@ -303,6 +331,15 @@ docker-compose ps event-producer
 docker-compose restart event-producer
 ```
 
+#### Permission Validation Errors
+```bash
+# Check client configurations
+docker exec event-processor-localstack awslocal dynamodb scan --table-name events-clients
+
+# Verify event types are allowed for specific clients
+# Default: client-001: [integration], client-002: [transaction, integration], client-003: [transaction, integration]
+```
+
 ### Getting Help
 
 1. **Check Logs**: `docker-compose logs [service-name]`
@@ -324,4 +361,6 @@ docker-compose down -v
 # Clean up images (optional)
 docker-compose down --rmi all
 ```
+
+
 

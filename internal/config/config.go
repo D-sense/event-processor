@@ -45,7 +45,7 @@ func Load() *Config {
 
 		// DynamoDB Configuration
 		DynamoDBTableName: getEnv("DYNAMODB_TABLE_NAME", "events"),
-		DynamoDBEndpoint:  getEnv("DYNAMODB_ENDPOINT", "http://localhost:4566"),
+		DynamoDBEndpoint:  getEnv("AWS_ENDPOINT_URL", "http://localhost:4566"), // Use AWS_ENDPOINT_URL for consistency
 
 		// Service Configuration
 		ServicePort:    getEnv("SERVICE_PORT", "8080"),

@@ -3,8 +3,9 @@ package validator
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/xeipuuv/gojsonschema"
 
 	"github.com/d-sense/event-processor/pkg/models"
@@ -17,7 +18,7 @@ type Validator struct {
 // New creates a new validator with the provided schema file
 func New(schemaPath string) *Validator {
 	// Load schema file
-	schemaBytes, err := ioutil.ReadFile(schemaPath)
+	schemaBytes, err := os.ReadFile(schemaPath)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to load schema file: %v", err))
 	}
@@ -34,14 +35,54 @@ func New(schemaPath string) *Validator {
 	}
 }
 
-// ValidateEvent validates an event against the JSON schema
-func (v *Validator) ValidateEvent(eventData interface{}) error {
-	// Convert to JSON for validation
-	eventBytes, err := json.Marshal(eventData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal event data: %w", err)
+// ValidateAndParseEvent validates and parses event data into Event struct
+func (v *Validator) ValidateAndParseEvent(eventData interface{}) (*models.Event, error) {
+	var eventBytes []byte
+	var err error
+
+	// Handle different input types
+	switch data := eventData.(type) {
+	case *types.Message:
+		// SQS message - extract the body
+		if data.Body == nil {
+			return nil, fmt.Errorf("SQS message body is nil")
+		}
+		eventBytes = []byte(*data.Body)
+	case string:
+		// String data
+		eventBytes = []byte(data)
+	case []byte:
+		// Byte data
+		eventBytes = data
+	default:
+		// Try to marshal to JSON first
+		eventBytes, err = json.Marshal(eventData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal event data: %w", err)
+		}
 	}
 
+	// First validate against schema
+	if err := v.ValidateEventBytes(eventBytes); err != nil {
+		return nil, err
+	}
+
+	// Parse into Event struct
+	var event models.Event
+	if err := json.Unmarshal(eventBytes, &event); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal event: %w", err)
+	}
+
+	// Additional business logic validation
+	if err := v.validateBusinessRules(&event); err != nil {
+		return nil, err
+	}
+
+	return &event, nil
+}
+
+// ValidateEventBytes validates event bytes against the JSON schema
+func (v *Validator) ValidateEventBytes(eventBytes []byte) error {
 	// Create document loader
 	documentLoader := gojsonschema.NewBytesLoader(eventBytes)
 
@@ -60,32 +101,6 @@ func (v *Validator) ValidateEvent(eventData interface{}) error {
 	}
 
 	return nil
-}
-
-// ValidateAndParseEvent validates and parses event data into Event struct
-func (v *Validator) ValidateAndParseEvent(eventData interface{}) (*models.Event, error) {
-	// First validate against schema
-	if err := v.ValidateEvent(eventData); err != nil {
-		return nil, err
-	}
-
-	// Convert to JSON and then to Event struct
-	eventBytes, err := json.Marshal(eventData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal event data: %w", err)
-	}
-
-	var event models.Event
-	if err := json.Unmarshal(eventBytes, &event); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal event: %w", err)
-	}
-
-	// Additional business logic validation
-	if err := v.validateBusinessRules(&event); err != nil {
-		return nil, err
-	}
-
-	return &event, nil
 }
 
 // validateBusinessRules performs additional business logic validation
@@ -111,20 +126,4 @@ func (v *Validator) validateBusinessRules(event *models.Event) error {
 	}
 
 	return nil
-}
-
-// GetValidationResult returns detailed validation results
-func (v *Validator) GetValidationResult(eventData interface{}) *models.ValidationResult {
-	err := v.ValidateEvent(eventData)
-	if err != nil {
-		return &models.ValidationResult{
-			Valid:  false,
-			Errors: []string{err.Error()},
-		}
-	}
-
-	return &models.ValidationResult{
-		Valid:  true,
-		Errors: nil,
-	}
 }
