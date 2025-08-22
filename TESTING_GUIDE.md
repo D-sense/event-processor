@@ -16,11 +16,8 @@ This guide will help you test the Event Processor service locally using Docker a
 
 ### One-Command Test
 ```bash
-# Navigate to deployments directory
-cd deployments
-
-# Run automated quick test
-../scripts/test-system.sh quick
+# Run automated quick test (from project root)
+chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh quick
 ```
 
 ### Manual Quick Test
@@ -73,7 +70,7 @@ docker-compose ps
 **Expected Result**: All services should be `Up` status:
 - `event-processor-localstack` (healthy)
 - `event-processor-service` (healthy) 
-- `event-producer` (running)
+- `event-producer-service` (running)
 
 ### 2. Health Check Verification
 

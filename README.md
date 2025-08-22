@@ -13,7 +13,7 @@ A high-performance, scalable event processing service built with Go, designed to
 ### Automated Setup (5 minutes)
 ```bash
 # Clone and setup
-git clone [repository-url]
+git clone git@github.com:D-sense/event-processor.git
 cd event-processor
 chmod +x ./scripts/setup.sh && ./scripts/setup.sh
 ```
@@ -21,12 +21,11 @@ chmod +x ./scripts/setup.sh && ./scripts/setup.sh
 ### Manual Setup
 ```bash
 # Clone repository
-git clone [repository-url]
+git clone git@github.com:D-sense/event-processor.git
 cd event-processor
 
 # Start services
-cd deployments
-docker-compose up -d
+docker-compose -f deployments/docker-compose.yml up -d
 
 # Wait for infrastructure setup (15-30 seconds)
 # The event-processor service will automatically create:
@@ -99,7 +98,7 @@ chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh quick
 
 - **Memory**: 4GB+ RAM available for Docker
 - **Disk**: 2GB+ free space
-- **Ports**: 4566, 8080, 8081 available
+- **Ports**: 4566, 8080 available
 - **OS**: macOS, Linux, or Windows with WSL2
 
 ---
@@ -121,7 +120,7 @@ docker run hello-world
 #### Check Port Availability
 ```bash
 # Check if required ports are free
-lsof -i :4566 -i :8080 -i :8081
+lsof -i :4566 -i :8080
 
 # If ports are in use, stop conflicting services
 # Kill processes using these ports if necessary
@@ -131,14 +130,11 @@ lsof -i :4566 -i :8080 -i :8081
 
 #### Start All Services
 ```bash
-# Navigate to deployments
-cd deployments
-
 # Start services in background
-docker-compose up -d
+docker-compose -f deployments/docker-compose.yml up -d
 
 # Monitor startup
-docker-compose logs -f
+docker-compose -f deployments/docker-compose.yml logs -f
 ```
 
 #### Wait for Initialization
@@ -148,7 +144,7 @@ docker-compose logs -f
 sleep 30
 
 # Check service status
-docker-compose ps
+docker-compose -f deployments/docker-compose.yml ps
 ```
 
 ### Step 3: Verification
@@ -182,7 +178,7 @@ environment:
   - LOG_LEVEL=debug  # Options: debug, info, warn, error, fatal, panic
 
 # Or override at runtime
-docker-compose up -e LOG_LEVEL=debug
+docker-compose -f deployments/docker-compose.yml up -e LOG_LEVEL=debug
 ```
 
 #### Available Log Levels
@@ -213,7 +209,7 @@ All logs are in JSON format with consistent fields:
 #### 1. Verify System Health
 ```bash
 # Check all services are running
-docker-compose ps
+docker-compose -f deployments/docker-compose.yml ps
 
 # Test health endpoint
 curl http://localhost:8080/health
@@ -222,10 +218,10 @@ curl http://localhost:8080/health
 #### 2. Watch Events Flow
 ```bash
 # Watch events being produced
-docker-compose logs -f event-producer
+docker-compose -f deployments/docker-compose.yml logs -f event-producer
 
 # In another terminal, watch events being processed
-docker-compose logs -f event-processor
+docker-compose -f deployments/docker-compose.yml logs -f event-processor
 ```
 
 #### 3. Verify AWS Resources
@@ -238,11 +234,15 @@ docker exec event-processor-localstack awslocal dynamodb list-tables
 
 # Check event count
 docker exec event-processor-localstack awslocal dynamodb scan --table-name events --select COUNT
+
+# Fetch last 10 processed records from events table
+docker exec event-processor-localstack awslocal dynamodb scan --table-name events --limit 10
 ```
+
 
 ### Expected Results ✅
 
-- **3 containers running**: LocalStack, Event Processor, Event Producer
+- **3 containers running**: event-processor-localstack, event-processor-service, event-producer-service
 - **Health check**: Returns `{"healthy": true}`
 - **Event flow**: Producer logs showing "✅ Sent event X", Processor logs showing validation
 - **AWS resources**: 2 SQS queues, 2 DynamoDB tables
@@ -279,41 +279,14 @@ event-processor/
 │   └── event-schema.json
 ├── scripts/
 │   ├── setup-localstack.sh
+│   ├── test-simple.sh
+│   ├── setup.sh
+│   ├── test-system.sh
 │   └── producer/
-|   └── run-producer.sh
-|   └── test-simple.sh
-|   └── setup.sh
-|   └── test-system.sh
+│       └── run-producer.sh
 ├── TESTING_GUIDE.md
 └── README.md
 
-```
-
----
-
-## 🔧 Development Workflow
-
-### Local Development
-1. **Start Services**: `cd deployments && docker-compose up -d`
-2. **Test**: `chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh quick`
-
-### Testing
-- **Unit Tests**: `go test ./...`
-- **Integration Tests**: `chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh`
-- **Load Tests**: See `TESTING_GUIDE.md`
-
-### System Restart Test
-```bash
-# Test complete system restart
-docker-compose down
-docker-compose up -d
-
-# Wait for auto-infrastructure setup
-sleep 30
-
-# Verify all services are healthy
-docker-compose ps
-curl http://localhost:8080/health
 ```
 
 ---
@@ -343,7 +316,7 @@ curl http://localhost:8080/health
 lsof -i :4566 -i :8080
 
 # Clean restart
-docker-compose down && docker-compose up -d
+docker-compose -f deployments/docker-compose.yml down && docker-compose -f deployments/docker-compose.yml up -d
 ```
 
 #### LocalStack Not Ready
@@ -352,17 +325,17 @@ docker-compose down && docker-compose up -d
 curl http://localhost:4566/_localstack/health
 
 # Restart LocalStack
-docker-compose restart localstack
+docker-compose -f deployments/docker-compose.yml restart localstack
 sleep 30
 ```
 
 #### No Events Flowing
 ```bash
 # Check producer status
-docker-compose ps event-producer
+docker-compose -f deployments/docker-compose.yml ps event-producer
 
 # Restart producer
-docker-compose restart event-producer
+docker-compose -f deployments/docker-compose.yml restart event-producer
 ```
 
 #### Permission Validation Errors
@@ -371,14 +344,14 @@ docker-compose restart event-producer
 docker exec event-processor-localstack awslocal dynamodb scan --table-name events-clients
 
 # Verify event types are allowed for specific clients
-# Default: client-001: [integration], client-002: [transaction, integration], client-003: [transaction, integration]
+# Current: All clients can send all event types (integration, monitoring, transaction, user_action)
 ```
 
 ### Getting Help
 
-1. **Check Logs**: `docker-compose logs [service-name]`
+1. **Check Logs**: `docker-compose -f deployments/docker-compose.yml logs [service-name]`
 2. **Run Diagnostics**: `chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh`
-3. **Clean Installation**: `docker-compose down -v && docker-compose up -d`
+3. **Clean Installation**: `docker-compose -f deployments/docker-compose.yml down -v && docker-compose -f deployments/docker-compose.yml up -d`
 
 ---
 
@@ -387,13 +360,13 @@ docker exec event-processor-localstack awslocal dynamodb scan --table-name event
 ### Stop Development Environment
 ```bash
 # Stop all services
-docker-compose down
+docker-compose -f deployments/docker-compose.yml down
 
 # Remove volumes (optional - cleans all data)
-docker-compose down -v
+docker-compose -f deployments/docker-compose.yml down -v
 
 # Clean up images (optional)
-docker-compose down --rmi all
+docker-compose -f deployments/docker-compose.yml down --rmi all
 ```
 
 
