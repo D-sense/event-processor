@@ -81,7 +81,7 @@ func main() {
 				eventCounter, event.EventID, event.EventType, event.ClientID)
 
 			// Wait between events (configurable interval)
-			time.Sleep(2 * time.Second) // 2 seconds between events for continuous testing
+			time.Sleep(2 * time.Second)
 		}
 	}
 }
