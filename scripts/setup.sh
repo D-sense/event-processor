@@ -4,6 +4,12 @@
 
 set -e
 
+# Ensure this script is executable
+if [ ! -x "$0" ]; then
+    echo "Making script executable..."
+    chmod +x "$0"
+fi
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -196,7 +202,7 @@ verify_installation() {
     
     # Run automated tests
     print_info "Running automated verification..."
-    if ./scripts/test-system.sh quick; then
+    if chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh quick; then
         print_success "Installation verification passed!"
     else
         print_error "Installation verification failed"
@@ -220,7 +226,7 @@ show_next_steps() {
     echo "  • Health check: curl http://localhost:8080/health"
     echo "  • View logs: docker-compose -f deployments/docker-compose.yml logs -f"
     echo "  • Stop services: docker-compose -f deployments/docker-compose.yml down"
-    echo "  • Run tests: ./scripts/test-system.sh"
+    echo "  • Run tests: chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh"
     echo ""
     echo -e "${BLUE}Documentation:${NC}"
     echo "  • Quick testing: cat QUICK_TEST.md"

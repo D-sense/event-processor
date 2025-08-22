@@ -4,6 +4,12 @@
 
 set -e
 
+# Ensure this script is executable
+if [ ! -x "$0" ]; then
+    echo "Making script executable..."
+    chmod +x "$0"
+fi
+
 echo "🚀 Starting Event Producer..."
 
 # Color codes for output

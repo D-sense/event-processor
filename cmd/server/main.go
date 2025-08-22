@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -52,13 +53,21 @@ func main() {
 	go func() {
 		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			status := healthChecker.Check(r.Context())
+			w.Header().Set("Content-Type", "application/json")
 			if status.Healthy {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("OK"))
 			} else {
 				w.WriteHeader(http.StatusServiceUnavailable)
-				w.Write([]byte("Service Unavailable"))
 			}
+
+			// Convert status to JSON
+			jsonData, err := json.Marshal(status)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(`{"error":"Failed to marshal health status"}`))
+				return
+			}
+			w.Write(jsonData)
 		})
 		log.WithField("port", cfg.ServicePort).Info("Starting HTTP server")
 		if err := http.ListenAndServe(fmt.Sprintf(":%s", cfg.ServicePort), nil); err != nil {

@@ -7,15 +7,15 @@ A high-performance, scalable event processing service built with Go, designed to
 **New to this project?** Follow these steps:
 
 1. **Prerequisites**: Docker 20.0+, Docker Compose 2.0+, Go 1.23+
-2. **One-Command Setup**: `./scripts/setup.sh`
-3. **Quick Test**: `cd deployments && ../scripts/test-system.sh quick`
+2. **One-Command Setup**: `chmod +x ./scripts/setup.sh && ./scripts/setup.sh`
+3. **Quick Test**: `chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh quick`
 
 ### Automated Setup (5 minutes)
 ```bash
 # Clone and setup
 git clone [repository-url]
 cd event-processor
-./scripts/setup.sh
+chmod +x ./scripts/setup.sh && ./scripts/setup.sh
 ```
 
 ### Manual Setup
@@ -36,7 +36,7 @@ docker-compose up -d
 sleep 30
 
 # Verify system
-../scripts/test-system.sh quick
+chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh quick
 ```
 
 **Expected Result**: All tests should pass ✅
@@ -165,10 +165,10 @@ curl http://localhost:4566/_localstack/health
 #### Run Automated Tests
 ```bash
 # Quick system test
-../scripts/test-system.sh quick
+chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh quick
 
 # Full system test
-../scripts/test-system.sh
+chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh
 ```
 
 ### Step 4: Logging Configuration
@@ -295,11 +295,11 @@ event-processor/
 
 ### Local Development
 1. **Start Services**: `cd deployments && docker-compose up -d`
-2. **Test**: `../scripts/test-system.sh quick`
+2. **Test**: `chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh quick`
 
 ### Testing
 - **Unit Tests**: `go test ./...`
-- **Integration Tests**: `../scripts/test-system.sh`
+- **Integration Tests**: `chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh`
 - **Load Tests**: See `TESTING_GUIDE.md`
 
 ### System Restart Test
@@ -377,7 +377,7 @@ docker exec event-processor-localstack awslocal dynamodb scan --table-name event
 ### Getting Help
 
 1. **Check Logs**: `docker-compose logs [service-name]`
-2. **Run Diagnostics**: `../scripts/test-system.sh`
+2. **Run Diagnostics**: `chmod +x ./scripts/test-system.sh && ./scripts/test-system.sh`
 3. **Clean Installation**: `docker-compose down -v && docker-compose up -d`
 
 ---

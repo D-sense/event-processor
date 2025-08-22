@@ -4,6 +4,12 @@
 
 set -e
 
+# Ensure this script is executable
+if [ ! -x "$0" ]; then
+    echo "Making script executable..."
+    chmod +x "$0"
+fi
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -315,11 +321,16 @@ main() {
     esac
 }
 
-# Check if we're in the right directory
-if [ ! -f "docker-compose.yml" ]; then
-    print_error "docker-compose.yml not found. Please run this script from the deployments directory."
-    print_info "Expected path: event-processor/deployments/"
-    exit 1
+# Check if we're in the right directory and adjust if needed
+if [ ! -f "deployments/docker-compose.yml" ]; then
+    if [ -f "../deployments/docker-compose.yml" ]; then
+        print_info "Adjusting to deployments directory context..."
+        cd ../deployments
+    else
+        print_error "deployments/docker-compose.yml not found. Please run this script from the event-processor root directory."
+        print_info "Expected path: event-processor/"
+        exit 1
+    fi
 fi
 
 main "$@"

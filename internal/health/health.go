@@ -99,15 +99,11 @@ func (h *Checker) checkDatabase(ctx context.Context) ComponentHealth {
 }
 
 // checkMemory performs basic memory usage check
-// This is a simplified memory check
+// I am keeping this as a simplified memory check
 // In a real application, you might want to check actual memory usage
 // using runtime.MemStats or other memory monitoring tools
 func (h *Checker) checkMemory() ComponentHealth {
 	start := time.Now()
-
-	// This is a simplified memory check
-	// In a real application, you might want to check actual memory usage
-	// using runtime.MemStats or other memory monitoring tools
 
 	latency := time.Since(start)
 
