@@ -39,7 +39,7 @@ type SQSConsumer struct {
 
 // NewSQSConsumer creates a new SQS consumer
 func NewSQSConsumer(awsCfg aws.Config, cfg *config.Config, processor processor.Processor, logger *logrus.Logger) *SQSConsumer {
-	// Create SQS client with proper LocalStack 3.x configuration
+	// Create SQS client
 	sqsClient := sqs.NewFromConfig(awsCfg, func(o *sqs.Options) {
 		o.BaseEndpoint = aws.String(cfg.AWSEndpointURL)
 	})
@@ -51,8 +51,8 @@ func NewSQSConsumer(awsCfg aws.Config, cfg *config.Config, processor processor.P
 		processor:  processor,
 		logger:     logger,
 		stopChan:   make(chan struct{}),
-		maxRetries: 3,  // Default max retries
-		waitTime:   20, // Long polling
+		maxRetries: 3,
+		waitTime:   20,
 		batchSize:  10,
 	}
 }

@@ -14,7 +14,6 @@ jobs:
       GOARCH: amd64
       GOPROXY: direct
       CGO_ENABLED: 0
-      GOPRIVATE: "github.com/findsy-HQ/*"
     steps:
       - uses: actions/checkout@v4
       
