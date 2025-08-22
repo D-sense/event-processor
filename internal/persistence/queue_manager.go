@@ -9,6 +9,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// SQSClient defines the interface for SQS operations
+type SQSClient interface {
+	ListQueues(ctx context.Context, params *sqs.ListQueuesInput, optFns ...func(*sqs.Options)) (*sqs.ListQueuesOutput, error)
+	CreateQueue(ctx context.Context, params *sqs.CreateQueueInput, optFns ...func(*sqs.Options)) (*sqs.CreateQueueOutput, error)
+	GetQueueUrl(ctx context.Context, params *sqs.GetQueueUrlInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueUrlOutput, error)
+}
+
 // QueueNames holds the names of SQS queues
 type QueueNames struct {
 	EventQueue string
@@ -25,7 +32,7 @@ func DefaultQueueNames() *QueueNames {
 
 // QueueManager handles SQS queue creation and management
 type QueueManager struct {
-	client     *sqs.Client
+	client     SQSClient
 	queueNames *QueueNames
 	logger     *logrus.Logger
 }

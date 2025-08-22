@@ -10,10 +10,22 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// TableManagerInterface defines the contract for table management operations
+type TableManagerInterface interface {
+	CreateNewLocalTables(ctx context.Context) error
+	InsertSampleClientConfigs(ctx context.Context) error
+}
+
+// QueueManagerInterface defines the contract for queue management operations
+type QueueManagerInterface interface {
+	CreateNewLocalQueues(ctx context.Context) error
+	GetQueueURLs(ctx context.Context) (map[string]string, error)
+}
+
 // InfrastructureManager coordinates the creation of all required infrastructure
 type InfrastructureManager struct {
-	tableManager *TableManager
-	queueManager *QueueManager
+	tableManager TableManagerInterface
+	queueManager QueueManagerInterface
 	logger       *logrus.Logger
 }
 

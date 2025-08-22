@@ -8,7 +8,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/d-sense/event-processor/internal/persistence"
-	"github.com/d-sense/event-processor/internal/validator"
 	"github.com/d-sense/event-processor/pkg/logger"
 	"github.com/d-sense/event-processor/pkg/models"
 )
@@ -18,15 +17,20 @@ type Processor interface {
 	ProcessEvent(ctx context.Context, eventData interface{}) error
 }
 
+// Validator defines the contract for event validation
+type Validator interface {
+	ValidateAndParseEvent(eventData interface{}) (*models.Event, error)
+}
+
 // EventProcessor handles the core event processing logic
 type EventProcessor struct {
 	repository persistence.Repository
-	validator  *validator.Validator
+	validator  Validator
 	logger     *logrus.Logger
 }
 
 // New creates a new EventProcessor instance
-func New(repo persistence.Repository, validator *validator.Validator, logger *logrus.Logger) *EventProcessor {
+func New(repo persistence.Repository, validator Validator, logger *logrus.Logger) *EventProcessor {
 	return &EventProcessor{
 		repository: repo,
 		validator:  validator,

@@ -10,8 +10,8 @@ import (
 	"github.com/d-sense/event-processor/pkg/logger"
 )
 
-// HealthStatus represents the health status of the service
-type HealthStatus struct {
+// Status HealthStatus represents the health status of the service
+type Status struct {
 	Healthy   bool                       `json:"healthy"`
 	Timestamp time.Time                  `json:"timestamp"`
 	Checks    map[string]ComponentHealth `json:"checks"`
@@ -24,23 +24,23 @@ type ComponentHealth struct {
 	Error   string        `json:"error,omitempty"`
 }
 
-// HealthChecker performs health checks on various components
-type HealthChecker struct {
+// Checker performs health checks on various components
+type Checker struct {
 	repository persistence.Repository
 	logger     *logrus.Logger
 }
 
 // New creates a new HealthChecker instance
-func New(repo persistence.Repository, logger *logrus.Logger) *HealthChecker {
-	return &HealthChecker{
+func New(repo persistence.Repository, logger *logrus.Logger) *Checker {
+	return &Checker{
 		repository: repo,
 		logger:     logger,
 	}
 }
 
 // Check performs health checks on all components
-func (h *HealthChecker) Check(ctx context.Context) *HealthStatus {
-	status := &HealthStatus{
+func (h *Checker) Check(ctx context.Context) *Status {
+	status := &Status{
 		Healthy:   true,
 		Timestamp: time.Now().UTC(),
 		Checks:    make(map[string]ComponentHealth),
@@ -73,7 +73,7 @@ func (h *HealthChecker) Check(ctx context.Context) *HealthStatus {
 }
 
 // checkDatabase checks the database connectivity and performance
-func (h *HealthChecker) checkDatabase(ctx context.Context) ComponentHealth {
+func (h *Checker) checkDatabase(ctx context.Context) ComponentHealth {
 	start := time.Now()
 
 	// Create a context with timeout for the database check
@@ -99,7 +99,10 @@ func (h *HealthChecker) checkDatabase(ctx context.Context) ComponentHealth {
 }
 
 // checkMemory performs basic memory usage check
-func (h *HealthChecker) checkMemory() ComponentHealth {
+// This is a simplified memory check
+// In a real application, you might want to check actual memory usage
+// using runtime.MemStats or other memory monitoring tools
+func (h *Checker) checkMemory() ComponentHealth {
 	start := time.Now()
 
 	// This is a simplified memory check

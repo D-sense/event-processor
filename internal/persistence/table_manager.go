@@ -26,7 +26,7 @@ func DefaultTableNames() *TableNames {
 
 // TableManager handles DynamoDB table creation and management
 type TableManager struct {
-	client     *dynamodb.Client
+	client     DynamoDBClient
 	tableNames *TableNames
 	logger     *logrus.Logger
 }

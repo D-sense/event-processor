@@ -16,9 +16,16 @@ import (
 	"github.com/d-sense/event-processor/pkg/logger"
 )
 
+// SQSClient defines the interface for SQS operations
+type SQSClient interface {
+	ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
+	SendMessage(ctx context.Context, params *sqs.SendMessageInput, optFns ...func(*sqs.Options)) (*sqs.SendMessageOutput, error)
+	DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
+}
+
 // SQSConsumer handles consuming messages from AWS SQS
 type SQSConsumer struct {
-	sqsClient  *sqs.Client
+	sqsClient  SQSClient
 	queueURL   string
 	dlqURL     string
 	processor  processor.Processor
