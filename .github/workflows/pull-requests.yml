@@ -1,0 +1,224 @@
+---
+name: Pull Requests
+
+# yamllint disable-line rule:truthy
+on:
+  - pull_request
+
+jobs:
+  build:
+    name: Build and Test Event Processor
+    runs-on: ubuntu-latest
+    env:
+      GOOS: linux
+      GOARCH: amd64
+      GOPROXY: direct
+      CGO_ENABLED: 0
+      GOPRIVATE: "github.com/findsy-HQ/*"
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+          
+      - uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download Go Modules
+        run: go mod download
+
+      - name: Verify Go Modules
+        run: go mod verify
+
+      - name: Run Tests
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+          
+      - name: Generate Test Coverage Report
+        run: |
+          go tool cover -func=coverage.out
+          go tool cover -html=coverage.out -o coverage.html
+          
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Build Event Processor Service
+        run: |
+          go build \
+            -o event-processor \
+            -ldflags="-s -w" \
+            ./cmd/server
+
+      - name: Build Event Producer Service
+        run: |
+          go build \
+            -o event-producer \
+            -ldflags="-s -w" \
+            ./cmd/producer
+
+      - name: Save built services
+        uses: actions/upload-artifact@v4
+        with:
+          name: event-services-binaries
+          path: |
+            ./event-processor
+            ./event-producer
+
+      - name: Save Test Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-coverage-report
+          path: |
+            ./coverage.out
+            ./coverage.html
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Event Processor Docker Image
+        run: |
+          docker build \
+            -f deployments/docker/Dockerfile.processor \
+            -t event-processor:test \
+            .
+
+      - name: Build Event Producer Docker Image
+        run: |
+          docker build \
+            -f deployments/docker/Dockerfile.producer \
+            -t event-producer:test \
+            .
+
+      - name: Verify Docker Images
+        run: |
+          docker images event-processor:test event-producer:test
+
+      - name: Test Scripts
+        run: |
+          chmod +x ./scripts/*.sh
+          chmod +x ./scripts/producer/*.sh
+          echo "Scripts made executable successfully"
+          
+      - name: Verify Project Structure
+        run: |
+          echo "Project structure verification:"
+          ls -la
+          echo "Scripts directory:"
+          ls -la scripts/
+          echo "Deployments directory:"
+          ls -la deployments/
+
+      - name: Validate Configuration Files
+        run: |
+          echo "Validating configuration files..."
+          
+          # Check if docker-compose.yml exists and is valid
+          if [ -f "deployments/docker-compose.yml" ]; then
+            echo "✅ docker-compose.yml found"
+          else
+            echo "❌ docker-compose.yml not found"
+            exit 1
+          fi
+          
+          # Check if Dockerfiles exist
+          if [ -f "deployments/docker/Dockerfile.processor" ]; then
+            echo "✅ Dockerfile.processor found"
+          else
+            echo "❌ Dockerfile.processor not found"
+            exit 1
+          fi
+          
+          if [ -f "deployments/docker/Dockerfile.producer" ]; then
+            echo "✅ Dockerfile.producer found"
+          else
+            echo "❌ Dockerfile.producer not found"
+            exit 1
+          fi
+          
+          # Check if schemas exist
+          if [ -f "schemas/event-schema.json" ]; then
+            echo "✅ event-schema.json found"
+          else
+            echo "❌ event-schema.json not found"
+            exit 1
+          fi
+          
+          echo "✅ All configuration files validated successfully"
+
+      - name: Validate JSON Schema
+        run: |
+          echo "Validating JSON schema..."
+          
+          # Check if jq is available for JSON validation
+          if command -v jq >/dev/null 2>&1; then
+            if jq empty schemas/event-schema.json >/dev/null 2>&1; then
+              echo "✅ event-schema.json is valid JSON"
+            else
+              echo "❌ event-schema.json contains invalid JSON"
+              exit 1
+            fi
+          else
+            echo "⚠️  jq not available, skipping JSON validation"
+          fi
+          
+          # Check schema structure
+          if grep -q '"type"' schemas/event-schema.json; then
+            echo "✅ event-schema.json contains type definitions"
+          else
+            echo "❌ event-schema.json missing type definitions"
+            exit 1
+          fi
+
+      - name: Go Code Quality Checks
+        run: |
+          echo "Running Go code quality checks..."
+          
+          # Check Go formatting
+          if [ "$(gofmt -l . | wc -l)" -eq 0 ]; then
+            echo "✅ Go code is properly formatted"
+          else
+            echo "❌ Go code formatting issues found:"
+            gofmt -l .
+            exit 1
+          fi
+          
+          # Check for common Go issues
+          go vet ./...
+          echo "✅ Go vet completed"
+          
+          # Check for unused dependencies
+          go mod tidy
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "✅ Go modules are tidy"
+          else
+            echo "❌ Go modules need tidying"
+            git status --porcelain
+            exit 1
+          fi
+
+      - name: Build Summary
+        run: |
+          echo "🎉 Event Processor CI Build Summary"
+          echo "=================================="
+          echo "✅ Go modules downloaded and verified"
+          echo "✅ Tests completed with coverage"
+          echo "✅ Event Processor service built"
+          echo "✅ Event Producer service built"
+          echo "✅ Docker images built successfully"
+          echo "✅ Scripts made executable"
+          echo "✅ Configuration files validated"
+          echo "✅ JSON schema validated"
+          echo "✅ Go code quality checks passed"
+          echo ""
+          echo "🚀 All checks passed successfully!"

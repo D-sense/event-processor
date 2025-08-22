@@ -9,3 +9,6 @@
 .cursorrules
 
 coverage.out
+coverage.html
+event-processor
+event-producer
